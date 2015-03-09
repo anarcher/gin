@@ -58,6 +58,11 @@ func main() {
 			Name:  "godep,g",
 			Usage: "use godep when building",
 		},
+		cli.StringFlag{
+			Name:  "config,c",
+			Value: "",
+			Usage: "Path to config file ",
+		},
 	}
 	app.Commands = []cli.Command{
 		{
@@ -98,9 +103,18 @@ func MainAction(c *cli.Context) {
 	runner.SetWriter(os.Stdout)
 	proxy := gin.NewProxy(builder, runner)
 
-	config := &gin.Config{
-		Port:    port,
-		ProxyTo: "http://localhost:" + appPort,
+	var config *gin.Config
+	if c.GlobalString("config") == "" {
+		config = &gin.Config{
+			Port:    port,
+			ProxyTo: map[string]string{"": "http://localhost:" + appPort},
+		}
+	} else {
+		config, err = gin.LoadConfig(c.GlobalString("config"))
+		if err != nil {
+			logger.Fatal(err)
+		}
+		port = config.Port
 	}
 
 	err = proxy.Run(config)

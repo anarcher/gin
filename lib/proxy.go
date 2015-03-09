@@ -12,28 +12,29 @@ import (
 
 type Proxy struct {
 	listener net.Listener
-	proxy    *httputil.ReverseProxy
+	proxies  map[string]*httputil.ReverseProxy
 	builder  Builder
 	runner   Runner
-	to       *url.URL
+	to       map[string]*url.URL
 }
 
 func NewProxy(builder Builder, runner Runner) *Proxy {
 	return &Proxy{
 		builder: builder,
 		runner:  runner,
+		proxies: make(map[string]*httputil.ReverseProxy, 0),
+		to:      make(map[string]*url.URL, 0),
 	}
 }
 
-func (p *Proxy) Run(config *Config) error {
+func (p *Proxy) Run(config *Config) (err error) {
 
-	// create our reverse proxy
-	url, err := url.Parse(config.ProxyTo)
-	if err != nil {
-		return err
+	// create our reverse proxies
+	for matchedUrl, proxyToUrl := range config.ProxyTo {
+		if err = p.createProxy(matchedUrl, proxyToUrl); err != nil {
+			return err
+		}
 	}
-	p.proxy = httputil.NewSingleHostReverseProxy(url)
-	p.to = url
 
 	p.listener, err = net.Listen("tcp", fmt.Sprintf(":%d", config.Port))
 	if err != nil {
@@ -48,16 +49,45 @@ func (p *Proxy) Close() error {
 	return p.listener.Close()
 }
 
+func (p *Proxy) createProxy(matchedUrl, proxyToUrl string) error {
+	//create our reverse proxy
+	url, err := url.Parse(proxyToUrl)
+	if err != nil {
+		return err
+	}
+
+	p.proxies[matchedUrl] = httputil.NewSingleHostReverseProxy(url)
+	p.to[matchedUrl] = url
+	return nil
+}
+
+func (p *Proxy) matchedURLFrom(url *url.URL) (string, error) {
+	path := url.Path
+	for mUrl, _ := range p.proxies {
+		if strings.HasPrefix(path, mUrl) {
+			return mUrl, nil
+		}
+	}
+	return "", fmt.Errorf("This url is not matched by any proxies (%v)", url)
+}
+
 func (p *Proxy) defaultHandler(res http.ResponseWriter, req *http.Request) {
 	errors := p.builder.Errors()
 	if len(errors) > 0 {
 		res.Write([]byte(errors))
 	} else {
 		p.runner.Run()
-		if strings.ToLower(req.Header.Get("Upgrade")) == "websocket" || strings.ToLower(req.Header.Get("Accept")) == "text/event-stream" {
-			proxyWebsocket(res, req, p.to)
+
+		proxyKey, err := p.matchedURLFrom(req.URL)
+		if err != nil {
+			res.Write([]byte(err.Error()))
+		}
+
+		if strings.ToLower(req.Header.Get("Upgrade")) == "websocket" ||
+			strings.ToLower(req.Header.Get("Accept")) == "text/event-stream" {
+			proxyWebsocket(res, req, p.to[proxyKey])
 		} else {
-			p.proxy.ServeHTTP(res, req)
+			p.proxies[proxyKey].ServeHTTP(res, req)
 		}
 	}
 }

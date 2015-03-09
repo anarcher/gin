@@ -41,7 +41,7 @@ func Test_Proxying(t *testing.T) {
 
 	config := &gin.Config{
 		Port:    5678,
-		ProxyTo: ts.URL,
+		ProxyTo: map[string]string{"": ts.URL},
 	}
 
 	err := proxy.Run(config)
@@ -70,7 +70,7 @@ func Test_Proxying_Websocket(t *testing.T) {
 
 	config := &gin.Config{
 		Port:    5678,
-		ProxyTo: ts.URL,
+		ProxyTo: map[string]string{"": ts.URL},
 	}
 
 	err := proxy.Run(config)
@@ -98,7 +98,7 @@ func Test_Proxying_Build_Errors(t *testing.T) {
 
 	config := &gin.Config{
 		Port:    5679,
-		ProxyTo: "http://localhost:3000",
+		ProxyTo: map[string]string{"": "http://localhost:3000"},
 	}
 
 	err := proxy.Run(config)
