@@ -63,12 +63,26 @@ func (p *Proxy) createProxy(matchedUrl, proxyToUrl string) error {
 
 func (p *Proxy) matchedURLFrom(url *url.URL) (string, error) {
 	path := url.Path
-	for mUrl, _ := range p.proxies {
-		if strings.HasPrefix(path, mUrl) {
-			return mUrl, nil
+
+	mURLs := []string{}
+	for mURL, _ := range p.proxies {
+		if strings.HasPrefix(path, mURL) {
+			mURLs = append(mURLs, mURL)
 		}
 	}
-	return "", fmt.Errorf("This url is not matched by any proxies (%v)", url)
+
+	if len(mURLs) <= 0 {
+		return "", fmt.Errorf("This url is not matched by any proxies (%v)", url)
+	}
+
+	//Pick up which is an longest url than matched urls.
+	var matchedURL string
+	for _, mURL := range mURLs {
+		if len(matchedURL) < len(mURL) {
+			matchedURL = mURL
+		}
+	}
+	return matchedURL, nil
 }
 
 func (p *Proxy) defaultHandler(res http.ResponseWriter, req *http.Request) {
@@ -81,6 +95,7 @@ func (p *Proxy) defaultHandler(res http.ResponseWriter, req *http.Request) {
 		proxyKey, err := p.matchedURLFrom(req.URL)
 		if err != nil {
 			res.Write([]byte(err.Error()))
+			return
 		}
 
 		if strings.ToLower(req.Header.Get("Upgrade")) == "websocket" ||
